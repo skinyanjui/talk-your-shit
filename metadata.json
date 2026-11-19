@@ -1,0 +1,6 @@
+{
+  "name": "TYS — Talk Your Shit",
+  "description": "An unfiltered public forum for anonymous confessions, optional end-to-end encrypted threads, community reputation scoring, and tiered moderation.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

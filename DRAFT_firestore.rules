@@ -1,0 +1,663 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Default-Deny Safety Net (Pillar 4.1)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // =========================================================================
+    // PHASE 3: GLOBAL HARDENED PRIMITIVES
+    // =========================================================================
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isBootstrappedAdmin() {
+      return isVerifiedUser() && request.auth.token.email == 'samuel.kinyanjui.sk@gmail.com';
+    }
+
+    function isAdmin() {
+      return isBootstrappedAdmin() || (
+        isVerifiedUser() &&
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function isModerator() {
+      return isVerifiedUser() &&
+        exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'moderator' &&
+        get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.status == 'active';
+    }
+
+    function isModeratorOrAdmin() {
+      return isAdmin() || isModerator();
+    }
+
+    function isActiveMember() {
+      return isVerifiedUser() &&
+        exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.status == 'active';
+    }
+
+    // =========================================================================
+    // PILLAR 2: VALIDATION BLUEPRINTS (ANTI-UPDATE-GAP HELPERS)
+    // =========================================================================
+
+    function isValidUserAccount(data) {
+      return data.keys().hasAll(['uid', 'email', 'displayName', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['uid', 'email', 'displayName', 'createdAt', 'updatedAt']) &&
+        isValidId(data.uid) &&
+        data.email is string && data.email.size() >= 3 && data.email.size() <= 254 &&
+        data.displayName is string && data.displayName.size() <= 120 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidUserProfile(data) {
+      return data.keys().hasAll([
+          'uid', 'handle', 'bio', 'reputation', 'role', 'status',
+          'postsCount', 'flagsSubmitted', 'lastVoteConfessionId', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'uid', 'handle', 'bio', 'reputation', 'role', 'status',
+          'postsCount', 'flagsSubmitted', 'lastVoteConfessionId',
+          'defaultAnonymous', 'defaultHideContent', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidId(data.uid) &&
+        data.handle is string && data.handle.size() >= 3 && data.handle.size() <= 32 &&
+        data.handle.matches('^[a-zA-Z0-9_\\-]+$') &&
+        data.bio is string && data.bio.size() <= 180 &&
+        data.reputation is int && data.reputation >= -1000 && data.reputation <= 100000 &&
+        data.role in ['member', 'moderator', 'admin'] &&
+        data.status in ['active', 'muted', 'suspended'] &&
+        data.postsCount is int && data.postsCount >= 0 && data.postsCount <= 100000 &&
+        data.flagsSubmitted is int && data.flagsSubmitted >= 0 && data.flagsSubmitted <= 100000 &&
+        data.lastVoteConfessionId is string && data.lastVoteConfessionId.size() <= 128 &&
+        (!('defaultAnonymous' in data) || data.defaultAnonymous is bool) &&
+        (!('defaultHideContent' in data) || data.defaultHideContent is bool) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidAdminRegistry(data) {
+      return data.keys().hasAll(['uid', 'grantedBy', 'createdAt']) &&
+        data.keys().hasOnly(['uid', 'grantedBy', 'createdAt']) &&
+        isValidId(data.uid) &&
+        isValidId(data.grantedBy) &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidConfession(data) {
+      return data.keys().hasAll([
+          'authorUid', 'authorHandle', 'isAnonymous', 'title', 'body', 'topic',
+          'sensitivity', 'isEncrypted', 'ciphertext', 'encryptionIv', 'encryptionSalt',
+          'encryptionHint', 'score', 'upvotes', 'downvotes', 'replyCount', 'flagCount',
+          'status', 'moderationNote', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'authorUid', 'authorHandle', 'isAnonymous', 'title', 'body', 'topic',
+          'sensitivity', 'isEncrypted', 'ciphertext', 'encryptionIv', 'encryptionSalt',
+          'encryptionHint', 'score', 'upvotes', 'downvotes', 'replyCount', 'flagCount',
+          'status', 'moderationNote', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidId(data.authorUid) &&
+        data.authorHandle is string && data.authorHandle.size() >= 3 && data.authorHandle.size() <= 48 &&
+        data.isAnonymous is bool &&
+        data.title is string && data.title.size() >= 3 && data.title.size() <= 140 &&
+        data.body is string && data.body.size() <= 3000 &&
+        data.topic in [
+          'Unfiltered', 'Hot Takes', 'Relationships', 'Work & Money',
+          'Family', 'Culture', 'Tech & Internet', 'Health & Mind',
+          'Night Thoughts', 'Campus & School', 'Advice', 'Confessions',
+          'Secrets', 'Off the Record'
+        ] &&
+        data.sensitivity in ['open', 'sensitive', 'mature'] &&
+        data.isEncrypted is bool &&
+        data.ciphertext is string && data.ciphertext.size() <= 8000 &&
+        data.encryptionIv is string && data.encryptionIv.size() <= 64 &&
+        data.encryptionSalt is string && data.encryptionSalt.size() <= 64 &&
+        data.encryptionHint is string && data.encryptionHint.size() <= 140 &&
+        ((data.isEncrypted == true && data.ciphertext.size() >= 16 && data.encryptionIv.size() >= 8 && data.encryptionSalt.size() >= 8) ||
+         (data.isEncrypted == false && data.body.size() >= 10)) &&
+        data.score is int && data.score >= -100000 && data.score <= 100000 &&
+        data.upvotes is int && data.upvotes >= 0 && data.upvotes <= 100000 &&
+        data.downvotes is int && data.downvotes >= 0 && data.downvotes <= 100000 &&
+        data.replyCount is int && data.replyCount >= 0 && data.replyCount <= 100000 &&
+        data.flagCount is int && data.flagCount >= 0 && data.flagCount <= 10000 &&
+        data.status in ['active', 'flagged', 'quarantined', 'removed'] &&
+        data.moderationNote is string && data.moderationNote.size() <= 300 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidVote(data, confessionId, voterUid) {
+      return data.keys().hasAll(['voterUid', 'confessionId', 'value', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['voterUid', 'confessionId', 'value', 'createdAt', 'updatedAt']) &&
+        isValidId(data.voterUid) &&
+        data.voterUid == voterUid &&
+        isValidId(data.confessionId) &&
+        data.confessionId == confessionId &&
+        data.value in [-1, 1] &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidReply(data, confessionId) {
+      return data.keys().hasAll([
+          'confessionId', 'authorUid', 'authorHandle', 'isAnonymous', 'body',
+          'isEncrypted', 'ciphertext', 'encryptionIv', 'encryptionSalt',
+          'status', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'confessionId', 'authorUid', 'authorHandle', 'isAnonymous', 'body',
+          'isEncrypted', 'ciphertext', 'encryptionIv', 'encryptionSalt',
+          'status', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidId(data.confessionId) &&
+        data.confessionId == confessionId &&
+        isValidId(data.authorUid) &&
+        data.authorHandle is string && data.authorHandle.size() >= 3 && data.authorHandle.size() <= 48 &&
+        data.isAnonymous is bool &&
+        data.body is string && data.body.size() <= 1500 &&
+        data.isEncrypted is bool &&
+        data.ciphertext is string && data.ciphertext.size() <= 4000 &&
+        data.encryptionIv is string && data.encryptionIv.size() <= 64 &&
+        data.encryptionSalt is string && data.encryptionSalt.size() <= 64 &&
+        ((data.isEncrypted == true && data.ciphertext.size() >= 16 && data.encryptionIv.size() >= 8 && data.encryptionSalt.size() >= 8) ||
+         (data.isEncrypted == false && data.body.size() >= 2)) &&
+        data.status in ['active', 'flagged', 'removed'] &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidModerationReport(data) {
+      return data.keys().hasAll([
+          'targetType', 'confessionId', 'replyId', 'targetTitle', 'reporterUid',
+          'reporterHandle', 'reason', 'details', 'status', 'resolvedByUid',
+          'resolutionNote', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'targetType', 'confessionId', 'replyId', 'targetTitle', 'reporterUid',
+          'reporterHandle', 'reason', 'details', 'status', 'resolvedByUid',
+          'resolutionNote', 'createdAt', 'updatedAt'
+        ]) &&
+        data.targetType in ['confession', 'reply'] &&
+        isValidId(data.confessionId) &&
+        data.replyId is string && data.replyId.size() <= 128 &&
+        data.targetTitle is string && data.targetTitle.size() <= 140 &&
+        isValidId(data.reporterUid) &&
+        data.reporterHandle is string && data.reporterHandle.size() >= 3 && data.reporterHandle.size() <= 48 &&
+        data.reason in ['harassment', 'doxxing', 'spam', 'harmful', 'off_topic'] &&
+        data.details is string && data.details.size() <= 500 &&
+        data.status in ['open', 'resolved', 'dismissed'] &&
+        data.resolvedByUid is string && data.resolvedByUid.size() <= 128 &&
+        data.resolutionNote is string && data.resolutionNote.size() <= 300 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidModerationLog(data) {
+      return data.keys().hasAll([
+          'actorUid', 'actorHandle', 'actorTier', 'action',
+          'targetType', 'targetId', 'reason', 'createdAt'
+        ]) &&
+        data.keys().hasOnly([
+          'actorUid', 'actorHandle', 'actorTier', 'action',
+          'targetType', 'targetId', 'reason', 'createdAt'
+        ]) &&
+        isValidId(data.actorUid) &&
+        data.actorHandle is string && data.actorHandle.size() >= 3 && data.actorHandle.size() <= 48 &&
+        data.actorTier in ['tier2_mod', 'tier3_admin'] &&
+        data.action in [
+          'approve', 'quarantine', 'remove', 'dismiss_report',
+          'adjust_reputation', 'change_role', 'update_policy', 'restrict_user'
+        ] &&
+        data.targetType in ['confession', 'reply', 'user', 'report', 'policy'] &&
+        data.targetId is string && data.targetId.size() >= 1 && data.targetId.size() <= 128 &&
+        data.reason is string && data.reason.size() >= 3 && data.reason.size() <= 300 &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidCommunitySettings(data) {
+      return data.keys().hasAll([
+          'autoQuarantineFlags', 'minRepToPost', 'minRepToReport',
+          'encryptionEnabled', 'unfilteredModeEnabled', 'announcement',
+          'updatedByUid', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'autoQuarantineFlags', 'minRepToPost', 'minRepToReport',
+          'encryptionEnabled', 'unfilteredModeEnabled', 'announcement',
+          'updatedByUid', 'updatedAt'
+        ]) &&
+        data.autoQuarantineFlags is int && data.autoQuarantineFlags >= 1 && data.autoQuarantineFlags <= 20 &&
+        data.minRepToPost is int && data.minRepToPost >= -50 && data.minRepToPost <= 100 &&
+        data.minRepToReport is int && data.minRepToReport >= 0 && data.minRepToReport <= 100 &&
+        data.encryptionEnabled is bool &&
+        data.unfilteredModeEnabled is bool &&
+        data.announcement is string && data.announcement.size() <= 280 &&
+        isValidId(data.updatedByUid) &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidSavedPost(data, userId, confessionId) {
+      return data.keys().hasAll(['userId', 'confessionId', 'title', 'topic', 'savedAt']) &&
+        data.keys().hasOnly(['userId', 'confessionId', 'title', 'topic', 'savedAt']) &&
+        isValidId(data.userId) &&
+        data.userId == userId &&
+        isValidId(data.confessionId) &&
+        data.confessionId == confessionId &&
+        data.title is string && data.title.size() >= 1 && data.title.size() <= 140 &&
+        data.topic in [
+          'Unfiltered', 'Hot Takes', 'Relationships', 'Work & Money',
+          'Family', 'Culture', 'Tech & Internet', 'Health & Mind',
+          'Night Thoughts', 'Campus & School', 'Advice', 'Confessions',
+          'Secrets', 'Off the Record'
+        ] &&
+        data.savedAt is timestamp;
+    }
+
+    // =========================================================================
+    // COLLECTION RULES
+    // =========================================================================
+
+    // 1. Private PII Accounts (/users/{userId}) — Strictly Isolated (Pillar 6)
+    match /users/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if false;
+      allow create: if isVerifiedUser() &&
+        isValidId(userId) &&
+        isOwner(userId) &&
+        isValidUserAccount(incoming()) &&
+        incoming().uid == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isVerifiedUser() &&
+        isValidId(userId) &&
+        isValidUserAccount(incoming()) &&
+        isOwner(userId) &&
+        incoming().uid == existing().uid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['email', 'displayName', 'updatedAt']);
+      allow delete: if false;
+
+      // 1b. User-Specific Saved Bookmarks (/users/{userId}/saved/{confessionId}) — Strictly Owner-Isolated
+      match /saved/{confessionId} {
+        allow get: if isSignedIn() &&
+          isValidId(userId) &&
+          isValidId(confessionId) &&
+          isOwner(userId);
+        allow list: if isSignedIn() &&
+          isValidId(userId) &&
+          isOwner(userId) &&
+          resource.data.userId == request.auth.uid;
+        allow create: if isVerifiedUser() &&
+          isValidId(userId) &&
+          isValidId(confessionId) &&
+          isOwner(userId) &&
+          isValidSavedPost(incoming(), userId, confessionId) &&
+          incoming().userId == request.auth.uid &&
+          incoming().savedAt == request.time &&
+          exists(/databases/$(database)/documents/users/$(userId)) &&
+          exists(/databases/$(database)/documents/confessions/$(confessionId));
+        allow update: if false;
+        allow delete: if isVerifiedUser() &&
+          isValidId(userId) &&
+          isValidId(confessionId) &&
+          isOwner(userId);
+      }
+    }
+
+    // 2. Public Pseudonymous Profiles (/userProfiles/{userId}) — Zero PII
+    match /userProfiles/{userId} {
+      allow get: if isValidId(userId) && (
+        resource.data.status in ['active', 'muted', 'suspended'] ||
+        isOwner(userId) ||
+        isModeratorOrAdmin()
+      );
+      allow list: if resource.data.status in ['active', 'muted', 'suspended'];
+      allow create: if isVerifiedUser() &&
+        isValidId(userId) &&
+        isOwner(userId) &&
+        isValidUserProfile(incoming()) &&
+        incoming().uid == request.auth.uid &&
+        (incoming().role == 'member' || (incoming().role == 'admin' && isBootstrappedAdmin())) &&
+        incoming().status == 'active' &&
+        incoming().reputation == 10 &&
+        incoming().postsCount == 0 &&
+        incoming().flagsSubmitted == 0 &&
+        incoming().lastVoteConfessionId == '' &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isVerifiedUser() &&
+        isValidId(userId) &&
+        isValidUserProfile(incoming()) &&
+        incoming().uid == existing().uid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time && (
+          // Action A: Owner editing pseudonymous handle, bio, and posting defaults
+          (isOwner(userId) &&
+            existing().status != 'suspended' &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'handle', 'bio', 'defaultAnonymous', 'defaultHideContent', 'updatedAt'
+            ])) ||
+          // Action B: Owner incrementing postsCount (+1) on new confession
+          (isOwner(userId) &&
+            existing().status == 'active' &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['postsCount', 'updatedAt']) &&
+            incoming().postsCount == existing().postsCount + 1) ||
+          // Action C: Owner incrementing flagsSubmitted (+1) on new report
+          (isOwner(userId) &&
+            existing().status == 'active' &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['flagsSubmitted', 'updatedAt']) &&
+            incoming().flagsSubmitted == existing().flagsSubmitted + 1) ||
+          // Action D: Atomic reputation delta backed by a vote created/updated/deleted at request.time (no self-farming)
+          (isActiveMember() &&
+            userId != request.auth.uid &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['reputation', 'lastVoteConfessionId', 'updatedAt']) &&
+            isValidId(incoming().lastVoteConfessionId) &&
+            incoming().reputation >= existing().reputation - 4 &&
+            incoming().reputation <= existing().reputation + 4 &&
+            get(/databases/$(database)/documents/confessions/$(incoming().lastVoteConfessionId)).data.authorUid == userId &&
+            (
+              (existsAfter(/databases/$(database)/documents/confessions/$(incoming().lastVoteConfessionId)/votes/$(request.auth.uid)) &&
+               getAfter(/databases/$(database)/documents/confessions/$(incoming().lastVoteConfessionId)/votes/$(request.auth.uid)).data.updatedAt == request.time) ||
+              (exists(/databases/$(database)/documents/confessions/$(incoming().lastVoteConfessionId)/votes/$(request.auth.uid)) &&
+               !existsAfter(/databases/$(database)/documents/confessions/$(incoming().lastVoteConfessionId)/votes/$(request.auth.uid)))
+            )) ||
+          // Action E: Tier 2 Moderator reputation penalty/award
+          (isModerator() &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['reputation', 'updatedAt']) &&
+            incoming().reputation >= existing().reputation - 50 &&
+            incoming().reputation <= existing().reputation + 50) ||
+          // Action F: Tier 3 Admin full governance (role, status, reputation)
+          (isAdmin() &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['role', 'status', 'reputation', 'updatedAt']))
+        );
+      allow delete: if false;
+    }
+
+    // 3. Trusted Tier 3 Admin Registry (/admins/{userId})
+    match /admins/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isBootstrappedAdmin();
+      allow create: if isAdmin() &&
+        isValidId(userId) &&
+        isValidAdminRegistry(incoming()) &&
+        incoming().uid == userId &&
+        incoming().grantedBy == request.auth.uid &&
+        incoming().createdAt == request.time;
+      allow update: if false;
+      allow delete: if isAdmin() && isValidId(userId);
+    }
+
+    // 4. Confessions (/confessions/{confessionId})
+    match /confessions/{confessionId} {
+      allow get: if isValidId(confessionId) && (
+        resource.data.status in ['active', 'flagged', 'quarantined'] ||
+        (isSignedIn() && resource.data.authorUid == request.auth.uid) ||
+        isModeratorOrAdmin()
+      );
+      allow list: if resource.data.status in ['active', 'flagged', 'quarantined'] ||
+        (isSignedIn() && resource.data.authorUid == request.auth.uid) ||
+        isBootstrappedAdmin();
+      allow create: if isVerifiedUser() &&
+        isValidId(confessionId) &&
+        isValidConfession(incoming()) &&
+        incoming().authorUid == request.auth.uid &&
+        incoming().score == 0 &&
+        incoming().upvotes == 0 &&
+        incoming().downvotes == 0 &&
+        incoming().replyCount == 0 &&
+        incoming().flagCount == 0 &&
+        incoming().status == 'active' &&
+        incoming().moderationNote == '' &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        isActiveMember();
+      allow update: if isVerifiedUser() &&
+        isValidId(confessionId) &&
+        isValidConfession(incoming()) &&
+        incoming().authorUid == existing().authorUid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time && (
+          // Action A: Author edits title/body/sensitivity/hint while active
+          (isOwner(existing().authorUid) &&
+            existing().status == 'active' &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['title', 'body', 'sensitivity', 'encryptionHint', 'updatedAt'])) ||
+          // Action B: Atomic vote tally update (Pillar 7 Atomicity Guarantee)
+          (isActiveMember() &&
+            existing().status != 'removed' &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['score', 'upvotes', 'downvotes', 'updatedAt']) &&
+            incoming().score >= existing().score - 2 &&
+            incoming().score <= existing().score + 2 &&
+            incoming().upvotes >= existing().upvotes - 1 &&
+            incoming().upvotes <= existing().upvotes + 1 &&
+            incoming().downvotes >= existing().downvotes - 1 &&
+            incoming().downvotes <= existing().downvotes + 1 &&
+            (
+              (existsAfter(/databases/$(database)/documents/confessions/$(confessionId)/votes/$(request.auth.uid)) &&
+               getAfter(/databases/$(database)/documents/confessions/$(confessionId)/votes/$(request.auth.uid)).data.updatedAt == request.time) ||
+              (exists(/databases/$(database)/documents/confessions/$(confessionId)/votes/$(request.auth.uid)) &&
+               !existsAfter(/databases/$(database)/documents/confessions/$(confessionId)/votes/$(request.auth.uid)))
+            )) ||
+          // Action C: Atomic replyCount increment
+          (isActiveMember() &&
+            existing().status != 'removed' &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['replyCount', 'updatedAt']) &&
+            incoming().replyCount == existing().replyCount + 1) ||
+          // Action D: Tier 1 community flag increment
+          (isActiveMember() &&
+            existing().status in ['active', 'flagged'] &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['flagCount', 'status', 'updatedAt']) &&
+            incoming().flagCount == existing().flagCount + 1 &&
+            incoming().status in ['active', 'flagged']) ||
+          // Action E: Tier 2 Moderator triage (approve / quarantine, cannot permanently remove)
+          (isModerator() &&
+            existing().status != 'removed' &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['status', 'moderationNote', 'updatedAt']) &&
+            incoming().status in ['active', 'flagged', 'quarantined']) ||
+          // Action F: Tier 3 Admin full moderation override (including terminal remove / restore)
+          (isAdmin() &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['status', 'moderationNote', 'sensitivity', 'updatedAt']))
+        );
+      allow delete: if isVerifiedUser() &&
+        isValidId(confessionId) &&
+        (isOwner(existing().authorUid) || isAdmin());
+
+      // 5. Per-User Votes (/confessions/{confessionId}/votes/{voterUid})
+      match /votes/{voterUid} {
+        allow get: if isSignedIn() &&
+          isValidId(confessionId) &&
+          isValidId(voterUid) &&
+          voterUid == request.auth.uid;
+        allow list: if isSignedIn() &&
+          resource.data.voterUid == request.auth.uid;
+        allow create: if isVerifiedUser() &&
+          isValidId(confessionId) &&
+          isValidId(voterUid) &&
+          voterUid == request.auth.uid &&
+          isValidVote(incoming(), confessionId, voterUid) &&
+          incoming().createdAt == request.time &&
+          incoming().updatedAt == request.time &&
+          isActiveMember() &&
+          exists(/databases/$(database)/documents/confessions/$(confessionId)) &&
+          get(/databases/$(database)/documents/confessions/$(confessionId)).data.status != 'removed';
+        allow update: if isVerifiedUser() &&
+          isValidId(confessionId) &&
+          isValidId(voterUid) &&
+          voterUid == request.auth.uid &&
+          isValidVote(incoming(), confessionId, voterUid) &&
+          incoming().voterUid == existing().voterUid &&
+          incoming().confessionId == existing().confessionId &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().updatedAt == request.time &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['value', 'updatedAt']) &&
+          isActiveMember() &&
+          exists(/databases/$(database)/documents/confessions/$(confessionId)) &&
+          get(/databases/$(database)/documents/confessions/$(confessionId)).data.status != 'removed';
+        allow delete: if isVerifiedUser() &&
+          isValidId(confessionId) &&
+          isValidId(voterUid) &&
+          voterUid == request.auth.uid &&
+          isActiveMember() &&
+          exists(/databases/$(database)/documents/confessions/$(confessionId));
+      }
+
+      // 6. Discussion Replies (/confessions/{confessionId}/replies/{replyId})
+      match /replies/{replyId} {
+        allow get: if isValidId(confessionId) &&
+          isValidId(replyId) && (
+            resource.data.status in ['active', 'flagged'] ||
+            (isSignedIn() && resource.data.authorUid == request.auth.uid) ||
+            isModeratorOrAdmin()
+          );
+        allow list: if resource.data.status in ['active', 'flagged'] ||
+          (isSignedIn() && resource.data.authorUid == request.auth.uid) ||
+          isBootstrappedAdmin();
+        allow create: if isVerifiedUser() &&
+          isValidId(confessionId) &&
+          isValidId(replyId) &&
+          isValidReply(incoming(), confessionId) &&
+          incoming().authorUid == request.auth.uid &&
+          incoming().status == 'active' &&
+          incoming().createdAt == request.time &&
+          incoming().updatedAt == request.time &&
+          isActiveMember() &&
+          exists(/databases/$(database)/documents/confessions/$(confessionId)) &&
+          get(/databases/$(database)/documents/confessions/$(confessionId)).data.status != 'removed' &&
+          getAfter(/databases/$(database)/documents/confessions/$(confessionId)).data.replyCount ==
+            get(/databases/$(database)/documents/confessions/$(confessionId)).data.replyCount + 1;
+        allow update: if isVerifiedUser() &&
+          isValidId(confessionId) &&
+          isValidId(replyId) &&
+          isValidReply(incoming(), confessionId) &&
+          incoming().authorUid == existing().authorUid &&
+          incoming().confessionId == existing().confessionId &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().updatedAt == request.time && (
+            // Action A: Tier 2 Moderator flags or restores reply
+            (isModerator() &&
+              existing().status != 'removed' &&
+              incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']) &&
+              incoming().status in ['active', 'flagged']) ||
+            // Action B: Tier 3 Admin full moderation override
+            (isAdmin() &&
+              incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']))
+          );
+        allow delete: if isVerifiedUser() &&
+          isValidId(confessionId) &&
+          isValidId(replyId) &&
+          (isOwner(existing().authorUid) || isAdmin());
+      }
+    }
+
+    // 7. Moderation Reports Queue (/reports/{reportId})
+    match /reports/{reportId} {
+      allow get: if isSignedIn() &&
+        isValidId(reportId) && (
+          resource.data.reporterUid == request.auth.uid ||
+          isModeratorOrAdmin()
+        );
+      allow list: if isSignedIn() &&
+        resource.data.status in ['open', 'resolved', 'dismissed'];
+      allow create: if isVerifiedUser() &&
+        isValidId(reportId) &&
+        isValidModerationReport(incoming()) &&
+        incoming().reporterUid == request.auth.uid &&
+        incoming().status == 'open' &&
+        incoming().resolvedByUid == '' &&
+        incoming().resolutionNote == '' &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        isActiveMember() &&
+        exists(/databases/$(database)/documents/confessions/$(incoming().confessionId));
+      allow update: if isVerifiedUser() &&
+        isValidId(reportId) &&
+        isValidModerationReport(incoming()) &&
+        incoming().reporterUid == existing().reporterUid &&
+        incoming().confessionId == existing().confessionId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time && (
+          // Action A: Tier 2 Moderator resolves/dismisses open report (terminal lock on resolved/dismissed)
+          (isModerator() &&
+            existing().status == 'open' &&
+            incoming().status in ['resolved', 'dismissed'] &&
+            incoming().resolvedByUid == request.auth.uid &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['status', 'resolvedByUid', 'resolutionNote', 'updatedAt'])) ||
+          // Action B: Tier 3 Admin override
+          (isAdmin() &&
+            incoming().resolvedByUid == request.auth.uid &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['status', 'resolvedByUid', 'resolutionNote', 'updatedAt']))
+        );
+      allow delete: if false;
+    }
+
+    // 8. Immutable Moderation Audit Ledger (/moderationLogs/{logId})
+    match /moderationLogs/{logId} {
+      allow get: if isSignedIn() && isValidId(logId);
+      allow list: if isSignedIn() &&
+        resource.data.actorTier in ['tier2_mod', 'tier3_admin'];
+      allow create: if isVerifiedUser() &&
+        isValidId(logId) &&
+        isValidModerationLog(incoming()) &&
+        incoming().actorUid == request.auth.uid &&
+        incoming().createdAt == request.time && (
+          (isModerator() &&
+            incoming().actorTier == 'tier2_mod' &&
+            incoming().action in ['approve', 'quarantine', 'dismiss_report', 'adjust_reputation']) ||
+          (isAdmin() &&
+            incoming().actorTier == 'tier3_admin')
+        );
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // 9. Community Standards Policy (/settings/{settingsId})
+    match /settings/{settingsId} {
+      allow get: if settingsId == 'community';
+      allow list: if false;
+      allow create: if isAdmin() &&
+        settingsId == 'community' &&
+        isValidCommunitySettings(incoming()) &&
+        incoming().updatedByUid == request.auth.uid &&
+        incoming().updatedAt == request.time;
+      allow update: if isAdmin() &&
+        settingsId == 'community' &&
+        isValidCommunitySettings(incoming()) &&
+        incoming().updatedByUid == request.auth.uid &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'autoQuarantineFlags', 'minRepToPost', 'minRepToReport',
+          'encryptionEnabled', 'unfilteredModeEnabled', 'announcement',
+          'updatedByUid', 'updatedAt'
+        ]);
+      allow delete: if false;
+    }
+  }
+}

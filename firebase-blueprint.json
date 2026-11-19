@@ -1,0 +1,638 @@
+{
+  "entities": {
+    "UserAccount": {
+      "title": "UserAccount",
+      "description": "Private PII record isolated to owner and admin.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 254
+        },
+        "displayName": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "email", "displayName", "createdAt", "updatedAt"]
+    },
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Public pseudonymous profile with reputation and moderation tier.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "handle": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 32,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "bio": {
+          "type": "string",
+          "maxLength": 180
+        },
+        "reputation": {
+          "type": "integer"
+        },
+        "role": {
+          "type": "string",
+          "enum": ["member", "moderator", "admin"]
+        },
+        "status": {
+          "type": "string",
+          "enum": ["active", "muted", "suspended"]
+        },
+        "postsCount": {
+          "type": "integer"
+        },
+        "flagsSubmitted": {
+          "type": "integer"
+        },
+        "lastVoteConfessionId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "defaultAnonymous": {
+          "type": "boolean"
+        },
+        "defaultHideContent": {
+          "type": "boolean"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "uid",
+        "handle",
+        "bio",
+        "reputation",
+        "role",
+        "status",
+        "postsCount",
+        "flagsSubmitted",
+        "lastVoteConfessionId",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "AdminRegistry": {
+      "title": "AdminRegistry",
+      "description": "Trusted Tier 3 admin UID registry.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "grantedBy": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "grantedBy", "createdAt"]
+    },
+    "Confession": {
+      "title": "Confession",
+      "description": "Public or encrypted confession thread.",
+      "type": "object",
+      "properties": {
+        "authorUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "authorHandle": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 48
+        },
+        "isAnonymous": {
+          "type": "boolean"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 140
+        },
+        "body": {
+          "type": "string",
+          "maxLength": 3000
+        },
+        "topic": {
+          "type": "string",
+          "enum": [
+            "Unfiltered",
+            "Hot Takes",
+            "Relationships",
+            "Work & Money",
+            "Family",
+            "Culture",
+            "Tech & Internet",
+            "Health & Mind",
+            "Night Thoughts",
+            "Campus & School",
+            "Advice",
+            "Confessions",
+            "Secrets",
+            "Off the Record"
+          ]
+        },
+        "sensitivity": {
+          "type": "string",
+          "enum": ["open", "sensitive", "mature"]
+        },
+        "isEncrypted": {
+          "type": "boolean"
+        },
+        "ciphertext": {
+          "type": "string",
+          "maxLength": 8000
+        },
+        "encryptionIv": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "encryptionSalt": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "encryptionHint": {
+          "type": "string",
+          "maxLength": 140
+        },
+        "score": {
+          "type": "integer"
+        },
+        "upvotes": {
+          "type": "integer"
+        },
+        "downvotes": {
+          "type": "integer"
+        },
+        "replyCount": {
+          "type": "integer"
+        },
+        "flagCount": {
+          "type": "integer"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["active", "flagged", "quarantined", "removed"]
+        },
+        "moderationNote": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "authorUid",
+        "authorHandle",
+        "isAnonymous",
+        "title",
+        "body",
+        "topic",
+        "sensitivity",
+        "isEncrypted",
+        "ciphertext",
+        "encryptionIv",
+        "encryptionSalt",
+        "encryptionHint",
+        "score",
+        "upvotes",
+        "downvotes",
+        "replyCount",
+        "flagCount",
+        "status",
+        "moderationNote",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Vote": {
+      "title": "Vote",
+      "description": "Single vote per authenticated user on a confession.",
+      "type": "object",
+      "properties": {
+        "voterUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "confessionId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "value": {
+          "type": "integer",
+          "enum": [-1, 1]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["voterUid", "confessionId", "value", "createdAt", "updatedAt"]
+    },
+    "Reply": {
+      "title": "Reply",
+      "description": "Discussion reply inside a confession thread.",
+      "type": "object",
+      "properties": {
+        "confessionId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "authorUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "authorHandle": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 48
+        },
+        "isAnonymous": {
+          "type": "boolean"
+        },
+        "body": {
+          "type": "string",
+          "maxLength": 1500
+        },
+        "isEncrypted": {
+          "type": "boolean"
+        },
+        "ciphertext": {
+          "type": "string",
+          "maxLength": 4000
+        },
+        "encryptionIv": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "encryptionSalt": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "status": {
+          "type": "string",
+          "enum": ["active", "flagged", "removed"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "confessionId",
+        "authorUid",
+        "authorHandle",
+        "isAnonymous",
+        "body",
+        "isEncrypted",
+        "ciphertext",
+        "encryptionIv",
+        "encryptionSalt",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "ModerationReport": {
+      "title": "ModerationReport",
+      "description": "Tier 1 community abuse flag awaiting Tier 2/3 review.",
+      "type": "object",
+      "properties": {
+        "targetType": {
+          "type": "string",
+          "enum": ["confession", "reply"]
+        },
+        "confessionId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "replyId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "targetTitle": {
+          "type": "string",
+          "maxLength": 140
+        },
+        "reporterUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "reporterHandle": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 48
+        },
+        "reason": {
+          "type": "string",
+          "enum": ["harassment", "doxxing", "spam", "harmful", "off_topic"]
+        },
+        "details": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "status": {
+          "type": "string",
+          "enum": ["open", "resolved", "dismissed"]
+        },
+        "resolvedByUid": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "resolutionNote": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "targetType",
+        "confessionId",
+        "replyId",
+        "targetTitle",
+        "reporterUid",
+        "reporterHandle",
+        "reason",
+        "details",
+        "status",
+        "resolvedByUid",
+        "resolutionNote",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "ModerationLog": {
+      "title": "ModerationLog",
+      "description": "Immutable transparency ledger of Tier 2 and Tier 3 moderation actions.",
+      "type": "object",
+      "properties": {
+        "actorUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "actorHandle": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 48
+        },
+        "actorTier": {
+          "type": "string",
+          "enum": ["tier2_mod", "tier3_admin"]
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "approve",
+            "quarantine",
+            "remove",
+            "dismiss_report",
+            "adjust_reputation",
+            "change_role",
+            "update_policy",
+            "restrict_user"
+          ]
+        },
+        "targetType": {
+          "type": "string",
+          "enum": ["confession", "reply", "user", "report", "policy"]
+        },
+        "targetId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 300
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "actorUid",
+        "actorHandle",
+        "actorTier",
+        "action",
+        "targetType",
+        "targetId",
+        "reason",
+        "createdAt"
+      ]
+    },
+    "CommunitySettings": {
+      "title": "CommunitySettings",
+      "description": "Tier 3 admin-controlled community standards and thresholds.",
+      "type": "object",
+      "properties": {
+        "autoQuarantineFlags": {
+          "type": "integer"
+        },
+        "minRepToPost": {
+          "type": "integer"
+        },
+        "minRepToReport": {
+          "type": "integer"
+        },
+        "encryptionEnabled": {
+          "type": "boolean"
+        },
+        "unfilteredModeEnabled": {
+          "type": "boolean"
+        },
+        "announcement": {
+          "type": "string",
+          "maxLength": 280
+        },
+        "updatedByUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "autoQuarantineFlags",
+        "minRepToPost",
+        "minRepToReport",
+        "encryptionEnabled",
+        "unfilteredModeEnabled",
+        "announcement",
+        "updatedByUid",
+        "updatedAt"
+      ]
+    },
+    "SavedPost": {
+      "title": "SavedPost",
+      "description": "User-specific bookmark linking a signed-in user to a saved confession.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "confessionId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 140
+        },
+        "topic": {
+          "type": "string",
+          "enum": [
+            "Unfiltered",
+            "Hot Takes",
+            "Relationships",
+            "Work & Money",
+            "Family",
+            "Culture",
+            "Tech & Internet",
+            "Health & Mind",
+            "Night Thoughts",
+            "Campus & School",
+            "Advice",
+            "Confessions",
+            "Secrets",
+            "Off the Record"
+          ]
+        },
+        "savedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["userId", "confessionId", "title", "topic", "savedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserAccount" },
+      "description": "Private PII records accessible strictly by owner or Tier 3 admin."
+    },
+    "/users/{userId}/saved/{confessionId}": {
+      "schema": { "$ref": "#/entities/SavedPost" },
+      "description": "Private user-specific bookmarked confessions accessible strictly by the owner."
+    },
+    "/userProfiles/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Public pseudonymous profiles with reputation scores and moderation roles."
+    },
+    "/admins/{userId}": {
+      "schema": { "$ref": "#/entities/AdminRegistry" },
+      "description": "Explicit Tier 3 admin UID registry."
+    },
+    "/confessions/{confessionId}": {
+      "schema": { "$ref": "#/entities/Confession" },
+      "description": "Top-level anonymous confessions and unfiltered discussions."
+    },
+    "/confessions/{confessionId}/votes/{voterUid}": {
+      "schema": { "$ref": "#/entities/Vote" },
+      "description": "Per-user vote records preventing duplicate voting."
+    },
+    "/confessions/{confessionId}/replies/{replyId}": {
+      "schema": { "$ref": "#/entities/Reply" },
+      "description": "Discussion replies attached to a parent confession."
+    },
+    "/reports/{reportId}": {
+      "schema": { "$ref": "#/entities/ModerationReport" },
+      "description": "Tier 1 abuse reports queued for Tier 2/3 moderation review."
+    },
+    "/moderationLogs/{logId}": {
+      "schema": { "$ref": "#/entities/ModerationLog" },
+      "description": "Immutable transparency log of moderation actions."
+    },
+    "/settings/{settingsId}": {
+      "schema": { "$ref": "#/entities/CommunitySettings" },
+      "description": "Global community policy configuration (settings/community)."
+    }
+  }
+}
